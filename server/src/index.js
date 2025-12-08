@@ -146,19 +146,26 @@ wss.on('connection', async (ws) => {
           If the conversation is flowing well, remain silent.
         `,
             },
+            callbacks: {
+                onopen: () => {
+                    console.log('Gemini Live session opened');
+                },
+                onmessage: (newContent) => {
+                    // Forward Gemini events to Client
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify(newContent));
+                    }
+                },
+                onclose: () => {
+                    console.log('Gemini Live session closed');
+                },
+                onerror: (err) => {
+                    console.error('Gemini Live session error:', err);
+                }
+            }
         });
 
         console.log('Connected to Gemini Live');
-
-        // Forward Gemini events to Client
-        geminiSession.addEventListener('content', (newContent) => {
-            // We receive LiveServerMessage content here
-            // We need to serialize this to send to our client
-            // The structure is { serverContent: { inputTranscription: ..., outputTranscription: ... } }
-            // We can just forward the JSON payload
-            ws.send(JSON.stringify(newContent));
-        });
-
     } catch (error) {
         console.error('Gemini connection error:', error);
         ws.close(1011, 'Failed to connect to AI');
