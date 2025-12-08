@@ -1,73 +1,90 @@
 # StratChat - Real-time Conversation Coach
 
-StratChat is a powerful, real-time conversation coaching application designed to help you navigate discussions, negotiations, and meetings with confidence. By leveraging the advanced capabilities of Google's Gemini models, StratChat provides live transcription, strategic suggestions, and deep analysis of your conversations.
+StratChat is a powerful, real-time conversation coaching application designed to help you navigate discussions, negotiations, and meetings with confidence. By leveraging the advanced capabilities of **Google's Gemini models**, StratChat provides live transcription, strategic suggestions, and deep analysis of your conversations.
 
-## Features
+## 🚀 Key Features
 
-- **Real-time Transcription**: Accurate, live transcription of your conversation using the Gemini Live service.
-- **AI Conversation Coach**: Receive real-time, strategic suggestions and questions to ask during the conversation to deepen engagement or gain leverage.
+- **Real-time Transcription**: Accurate, live transcription using Gemini Live.
+- **AI Conversation Coach**: Real-time strategic suggestions to deepen engagement or gain leverage.
 - **Transcript Analysis**:
-    - **Quick Summary**: Get a snapshot of the conversation and the speaker's emotional sentiment using Gemini Flash Lite.
-    - **Deep Strategy**: Utilize Gemini 3 Pro to analyze underlying psychological motivations and suggest long-term strategies.
-- **Transcript Refinement**: Automatically re-processes audio chunks to correct and refine the transcript for higher accuracy.
-- **Text-to-Speech**: Listen to the AI's suggestions.
-- **Export**: Download the full transcript of your session.
-- **Dark/Light Mode**: Toggle between themes for comfortable viewing.
-- **Responsive Design**: Optimized for both desktop and mobile use.
+    - **Quick Summary**: Instant snapshot of the topic and speaker sentiment (Gemini Flash Lite).
+    - **Deep Strategy**: Psychological motivation analysis and long-term strategy (Gemini 2.0 Pro).
+- **Architecture**: Secure Backend-for-Frontend (BFF) proxy to protect API keys.
+- **Performance**: Virtualized transcript rendering for handling long sessions.
+- **Accessibility**: optimized for screen readers and keyboard navigation.
 
-## Technologies Used
+## 🛠️ Technologies
 
-- **Frontend**: React, Vite, TypeScript
-- **AI**: Google GenAI SDK (Gemini 2.5 Flash, Gemini Flash Lite, Gemini 3 Pro)
-- **Styling**: Tailwind CSS (via CDN)
-- **Icons**: Lucide React
+- **Frontend**: React 19, Vite, TypeScript, Tailwind CSS
+- **Backend**: Node.js, Express, WebSocket (Native)
+- **AI**: Google GenAI SDK
+- **Testing**: Vitest, React Testing Library
+- **Deployment**: GitHub Actions (CI/CD)
 
-## Prerequisites
+## 📦 Installation & Setup
 
-- Node.js installed on your machine.
-- A Google Gemini API Key. You can get one from [Google AI Studio](https://aistudio.google.com/).
+### Prerequisites
+- Node.js (v18+)
+- A Google Gemini API Key ([Get one here](https://aistudio.google.com/))
 
-## Installation
+### 1. Security Setup
+Create a `.env.local` file in the **root** directory (NOT inside `/server`):
+```env
+# Root directory .env.local
+GEMINI_API_KEY=your_key_here
+```
 
-1.  Clone the repository:
-    ```bash
-    git clone <repository-url>
-    cd stratchat
-    ```
+### 2. Install Dependencies
+You need to install dependencies for both the frontend and the backend server.
 
-2.  Install dependencies:
-    ```bash
-    npm install
-    ```
+```bash
+# Install frontend deps
+npm install
 
-3.  Set up your environment variables:
-    - Create a `.env.local` file in the root directory.
-    - Add your Gemini API Key:
-      ```env
-      GEMINI_API_KEY=your_api_key_here
-      ```
-    *(Note: The `vite.config.ts` is configured to expose `GEMINI_API_KEY` as `process.env.API_KEY` to the client).*
+# Install backend deps
+cd server && npm install
+cd ..
+```
 
-## Usage
+### 3. Running the App
+For the app to work, **both** the backend server and the frontend client must be running.
 
-1.  Start the development server:
-    ```bash
-    npm run dev
-    ```
+**Step 1: Start the Backend Server**
+```bash
+# In a new terminal
+cd server
+npm start
+# Server listens on port 3001
+```
 
-2.  Open your browser and navigate to the URL provided (usually `http://localhost:3000`).
+**Step 2: Start the Frontend Client**
+```bash
+# In the root terminal
+npm run dev
+# Vite runs on http://localhost:3000
+```
+Open [http://localhost:3000](http://localhost:3000) to use the app.
 
-3.  **Connect**: Click the microphone button to start the session.
-4.  **Speak**: Start your conversation. The app will transcribe it in real-time.
-5.  **Receive Coaching**: Watch the "Strategy" tab for live suggestions.
-6.  **Analyze**:
-    - Use "Quick Summary" for an immediate overview.
-    - Use "Deep Strategy" for a more in-depth analysis.
-7.  **Export**: Click "Export Session" to download the transcript.
+## ✅ Testing & Quality
 
-## Project Structure
+We prioritize stability and code quality.
 
-- `src/App.tsx`: Main application component.
-- `src/components/`: UI components (TranscriptView, CoachView, AnalysisPanel, etc.).
-- `src/services/`: AI integration services (`geminiLive.ts`, `geminiStatic.ts`).
-- `src/utils/`: Utility functions.
+### Unit Tests
+Run the test suite using Vitest:
+```bash
+npm test
+```
+
+### Type Checking
+Verify TypeScript types:
+```bash
+npm run typecheck
+```
+## 🏗️ Project Structure
+
+- `server/`: Node.js Express server to handle API requests and WebSocket proxy.
+- `src/`: React Frontend source code.
+  - `components/`: UI components (`TranscriptView` with virtualization, `ErrorBoundary`, etc.).
+  - `services/`: API integration services (refactored to call local backend).
+  - `hooks/`: Custom React hooks (`useGeminiSession`, `useTTS`).
+- `.github/workflows/`: CI/CD pipeline configuration.
