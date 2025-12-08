@@ -1,0 +1,7 @@
+{
+  "name": "StratChat - Real-time Conversation Coach",
+  "description": "Real-time speech transcription and strategic questioning aid using Gemini Live API and Thinking mode.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
