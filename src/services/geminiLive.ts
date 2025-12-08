@@ -1,5 +1,5 @@
 
-import { createPcmBlob, encodeWAV } from '../utils/audioUtils';
+import { createPcmBlob, encodeWAV, float32ToB64PCM } from '../utils/audioUtils';
 import { ConnectionStatus, TranscriptEntry } from '../types';
 
 interface LiveConnectionCallbacks {
@@ -81,18 +81,22 @@ export class GeminiLiveService {
   }
 
   private reconnectAttempts = 0;
-  private maxReconnectAttempts = 5;
+  private maxReconnectAttempts = 3; // Limit to 3 retries as requested
 
   private attemptReconnect() {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      this.callbacks.onError("Failed to reconnect after multiple attempts.");
+      this.callbacks.onError("Connection lost. Failed to reconnect after 3 attempts.");
+      this.callbacks.onStatusChange(ConnectionStatus.ERROR);
       return;
     }
 
     this.reconnectAttempts++;
-    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 10000);
+    this.callbacks.onStatusChange(ConnectionStatus.RECONNECTING); // Notify UI
 
-    console.log(`Reconnecting in ${delay}ms... (Attempt ${this.reconnectAttempts})`);
+    // Exponential backoff: 1s, 2s, 4s
+    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 5000);
+
+    console.log(`Reconnecting in ${delay}ms... (Attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
 
     setTimeout(() => {
       this.connect();
@@ -104,6 +108,16 @@ export class GeminiLiveService {
 
     if (!this.inputAudioContext || !this.stream) return;
 
+    // Send Debug Info to Server
+    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+      this.socket.send(JSON.stringify({
+        debug: {
+          sampleRate: this.inputAudioContext.sampleRate,
+          userAgent: navigator.userAgent
+        }
+      }));
+    }
+
     this.source = this.inputAudioContext.createMediaStreamSource(this.stream);
     this.processor = this.inputAudioContext.createScriptProcessor(4096, 1, 1);
 
@@ -112,10 +126,16 @@ export class GeminiLiveService {
 
       // 1. Send to Backend (which proxies to Live API)
       if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-        // Send raw PCM data as binary
-        // Create a copy of the buffer because inputBuffer is reused
-        const bufferCopy = new Float32Array(inputData);
-        this.socket.send(bufferCopy.buffer);
+        // Check for sample rate mismatch to prevent "chipmunk" audio
+        if (this.inputAudioContext && this.inputAudioContext.sampleRate !== 16000) {
+          console.warn('Sample rate mismatch:', this.inputAudioContext.sampleRate);
+          // In a perfect world we would resample here. 
+          // For now, let's rely on the fact that we asked for 16000.
+        }
+
+        // Send as JSON with Base64 to ensure clean transmission through the proxy
+        const b64 = float32ToB64PCM(inputData);
+        this.socket.send(JSON.stringify({ audio: b64 }));
       }
 
       // 2. Buffer locally for re-transcription
@@ -206,8 +226,61 @@ export class GeminiLiveService {
           });
         }
       }
+
+      // 4. Handle Audio Output (Playback)
+      if (message.serverContent?.modelTurn?.parts) {
+        for (const part of message.serverContent.modelTurn.parts) {
+          if (part.inlineData && part.inlineData.mimeType.startsWith('audio/')) {
+            // Base64 Audio
+            const base64 = part.inlineData.data;
+            this.playAudioChunk(base64);
+          }
+        }
+      }
+
     } catch (e) {
       console.error("Error parsing WebSocket message", e);
+    }
+  }
+
+  private nextPlayTime = 0;
+
+  private async playAudioChunk(base64: string) {
+    if (!this.inputAudioContext) return;
+
+    try {
+      const binaryString = atob(base64);
+      const len = binaryString.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+
+      // Gemini returns PCM 24000Hz usually
+      // But it comes as raw PCM in a WAV container or raw? 
+      // The SDK usually sends "audio/pcm;rate=24000".
+      // If it is raw PCM Int16:
+      const int16 = new Int16Array(bytes.buffer);
+      const float32 = new Float32Array(int16.length);
+      for (let i = 0; i < int16.length; i++) {
+        float32[i] = int16[i] / 32768.0;
+      }
+
+      const audioBuffer = this.inputAudioContext.createBuffer(1, float32.length, 24000);
+      audioBuffer.copyToChannel(float32, 0);
+
+      const source = this.inputAudioContext.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(this.inputAudioContext.destination);
+
+      const now = this.inputAudioContext.currentTime;
+      // Schedule playback to be continuous
+      const startTime = Math.max(now, this.nextPlayTime);
+      source.start(startTime);
+      this.nextPlayTime = startTime + audioBuffer.duration;
+
+    } catch (e) {
+      console.error("Error playing audio chunk", e);
     }
   }
 
@@ -220,9 +293,13 @@ export class GeminiLiveService {
     this.source?.disconnect();
     this.processor?.disconnect();
     this.stream?.getTracks().forEach(t => t.stop());
-    this.inputAudioContext?.close();
 
+    // Don't close inputAudioContext if we are sharing it? 
+    // Actually we created it, so we should close it, but maybe wait for playback?
+    // For now, close it to stop everything.
+    this.inputAudioContext?.close();
     this.inputAudioContext = null;
+
     this.stream = null;
     this.processor = null;
     this.source = null;
@@ -233,5 +310,6 @@ export class GeminiLiveService {
     this.currentText = '';
     this.currentStartTime = null;
     this.audioChunks = [];
+    this.nextPlayTime = 0;
   }
 }

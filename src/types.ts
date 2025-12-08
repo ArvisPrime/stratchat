@@ -25,8 +25,9 @@ export interface AnalysisResult {
 }
 
 export enum ConnectionStatus {
-  DISCONNECTED = 'DISCONNECTED',
-  CONNECTING = 'CONNECTING',
-  CONNECTED = 'CONNECTED',
-  ERROR = 'ERROR',
+  DISCONNECTED = 'disconnected',
+  CONNECTING = 'connecting',
+  CONNECTED = 'connected',
+  RECONNECTING = 'reconnecting', // New status
+  ERROR = 'error'
 }

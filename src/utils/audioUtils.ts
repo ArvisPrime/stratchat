@@ -10,7 +10,7 @@ export function createPcmBlob(data: Float32Array): Blob {
     const s = Math.max(-1, Math.min(1, data[i]));
     int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
   }
-  
+
   // Convert buffer to binary string for btoa
   const bytes = new Uint8Array(int16.buffer);
   let binary = '';
@@ -107,4 +107,25 @@ function floatTo16BitPCM(output: DataView, offset: number, input: Float32Array) 
     const s = Math.max(-1, Math.min(1, input[i]));
     output.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
   }
+}
+
+export function float32ToInt16(input: Float32Array): ArrayBuffer {
+  const buffer = new ArrayBuffer(input.length * 2);
+  const view = new DataView(buffer);
+  floatTo16BitPCM(view, 0, input);
+  return buffer;
+}
+
+export function float32ToB64PCM(input: Float32Array): string {
+  const buffer = new ArrayBuffer(input.length * 2);
+  const view = new DataView(buffer);
+  floatTo16BitPCM(view, 0, input);
+
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
 }

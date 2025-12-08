@@ -1,6 +1,7 @@
 import express from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
 import { GoogleGenAI, Modality } from '@google/genai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import http from 'http';
@@ -15,6 +16,7 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
 const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const genAIStatic = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const MODEL_NAME_LIVE = 'gemini-2.5-flash-native-audio-preview-09-2025';
 
 // --- Static Endpoints ---
@@ -22,7 +24,7 @@ const MODEL_NAME_LIVE = 'gemini-2.5-flash-native-audio-preview-09-2025';
 app.post('/api/summary', async (req, res) => {
     try {
         const { text } = req.body;
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-lite-preview-02-05' });
+        const model = genAIStatic.getGenerativeModel({ model: 'gemini-2.0-flash-lite-preview-02-05' });
         const prompt = `
       Analyze the following transcript of a conversation.
       Provide a "Quick Summary" (2-3 sentences max) capturing the core topic.
@@ -51,7 +53,7 @@ app.post('/api/summary', async (req, res) => {
 app.post('/api/strategy', async (req, res) => {
     try {
         const { text } = req.body;
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-pro-exp-02-05' });
+        const model = genAIStatic.getGenerativeModel({ model: 'gemini-2.0-pro-exp-02-05' });
         const prompt = `
       You are a high-level negotiation and communication strategist.
       Analyze the transcript below.
@@ -73,7 +75,7 @@ app.post('/api/strategy', async (req, res) => {
 app.post('/api/question', async (req, res) => {
     try {
         const { text } = req.body;
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+        const model = genAIStatic.getGenerativeModel({ model: 'gemini-2.0-flash' });
         const prompt = `
       Based on this recent conversation snippet, generate ONE high-impact strategic question the user can ask to take control or deepen understanding.
       Snippet: ${text}
@@ -89,7 +91,7 @@ app.post('/api/question', async (req, res) => {
 app.post('/api/refine', async (req, res) => {
     try {
         const { audio } = req.body; // Expecting base64 WAV
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+        const model = genAIStatic.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
         // Convert base64 to parts
         const parts = [{
@@ -131,33 +133,41 @@ wss.on('connection', async (ws) => {
         geminiSession = await genAI.live.connect({
             model: MODEL_NAME_LIVE,
             config: {
-                responseModalities: [Modality.AUDIO],
-                systemInstruction: `
-          You are a silent strategic conversation partner. 
-          You are listening to a conversation through the user's microphone.
-          
-          Do NOT respond to everything. Do NOT be conversational.
-          Wait for significant chunks of information. 
-          
-          When you detect a pause or a good moment for the user to interject, provide a "Strategic Question" the user can ask to deepen the engagement.
-          Keep your responses VERY short. Only the question.
-          Example output: "Ask: How did that make you feel regarding the timeline?"
-          
-          If the conversation is flowing well, remain silent.
-        `,
+                // VERIFIED CONFIGURATION (From simple-server.js diagnostics)
+                responseModalities: [Modality.AUDIO], // Native model supports AUDIO only output for now
+                inputAudioTranscription: {}, // Explicitly enable user transcription with empty object
+                systemInstruction: {
+                    parts: [{ text: "You are a silent listener. You are listening to a conversation to provide a transcript. DO NOT RESPOND. DO NOT SPEAK. Remain completely silent." }]
+                },
             },
             callbacks: {
                 onopen: () => {
                     console.log('Gemini Live session opened');
                 },
                 onmessage: (newContent) => {
-                    // Forward Gemini events to Client
+                    // Forward Gemini events to Client, BUT FILTER OUT AI AUDIO
                     if (ws.readyState === WebSocket.OPEN) {
-                        ws.send(JSON.stringify(newContent));
+                        try {
+                            // Check if this is an AI Turn (Audio/Text response)
+                            if (newContent.serverContent?.modelTurn) {
+                                // MUTE THE AI: Do not forward modelTurn to client.
+                                // We only want 'inputTranscription' (User's speech text) 
+                                // and 'turnComplete' (End of turn signals).
+                                // console.log('🤫 Muted AI response');
+                                return;
+                            }
+
+                            // Forward everything else (like inputTranscription)
+                            ws.send(JSON.stringify(newContent));
+                        } catch (e) {
+                            console.error('Error forwarding message:', e);
+                        }
                     }
                 },
-                onclose: () => {
-                    console.log('Gemini Live session closed');
+                onclose: (event) => {
+                    console.log('Gemini Live session closed', event);
+                    // CRITICAL: Close the client connection so it knows to reconnect
+                    ws.close(1011, "Gemini Backend Closed");
                 },
                 onerror: (err) => {
                     console.error('Gemini Live session error:', err);
@@ -173,37 +183,48 @@ wss.on('connection', async (ws) => {
     }
 
     ws.on('message', async (data) => {
-        // Client sends audio data (Blob/Buffer)
-        // We forward detailed media chunks to Gemini
+        console.log(`Received message from client. Type: ${typeof data}, IsBuffer: ${Buffer.isBuffer(data)}, Size: ${data.length}`);
         if (geminiSession) {
             try {
-                // Expecting JSON message wrapping the audio or raw bytes?
-                // To match the client impl, let's assume client sends JSON with base64 OR raw binary
-                // Simplest is client sends the same payload struct `{"realtimeInput": {"media": {"mimeType":..., "data":...}}}`
-                // But client currently uses `session.sendRealtimeInput`.
-                // We will implement a custom protocol.
-                // Protocol:
-                // 1. Binary message = Audio PCM data
-                // 2. Text message = Control/Config (not used yet)
+                // Attempt to parse as JSON first (Protocol: { audio: "base64" })
+                const strData = data.toString();
+                let isJson = false;
+                try {
+                    const parsed = JSON.parse(strData);
+                    if (parsed.audio) {
+                        // VERIFIED FIX: Wrap in `media` object
+                        await geminiSession.sendRealtimeInput({
+                            media: {
+                                mimeType: 'audio/pcm;rate=16000',
+                                data: parsed.audio
+                            }
+                        });
+                        isJson = true;
+                        process.stdout.write('.'); // Heartbeat
+                        // console.log('Sent audio chunk (JSON) to Gemini');
+                    } else if (parsed.text) {
+                        await geminiSession.send({
+                            parts: [{ text: parsed.text }]
+                        });
+                        isJson = true;
+                        console.log('Sent text message to Gemini:', parsed.text);
+                    }
+                } catch (e) {
+                    // Not valid JSON, proceed to binary handling
+                }
 
-                // However, `ws` receives Buffer for binary.
-                if (Buffer.isBuffer(data)) {
+                if (!isJson && Buffer.isBuffer(data)) {
+                    // Fallback to raw binary (Protocol: Float32/Int16 raw bytes)
                     // Convert Buffer to base64
                     const b64 = data.toString('base64');
+                    // VERIFIED FIX: Wrap in `media` object
                     await geminiSession.sendRealtimeInput({
-                        mimeType: 'audio/pcm;rate=16000',
-                        data: b64
-                    });
-                } else {
-                    // Maybe text data?
-                    const str = data.toString();
-                    const parsed = JSON.parse(str);
-                    if (parsed.audio) {
-                        await geminiSession.sendRealtimeInput({
+                        media: {
                             mimeType: 'audio/pcm;rate=16000',
-                            data: parsed.audio
-                        });
-                    }
+                            data: b64
+                        }
+                    });
+                    console.log('Sent audio chunk (Binary) to Gemini');
                 }
             } catch (e) {
                 console.error('Error sending to Gemini:', e);
