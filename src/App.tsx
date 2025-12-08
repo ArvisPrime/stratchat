@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Mic, MicOff, Download, Zap, Brain, LayoutDashboard, MessageSquareText, Settings } from 'lucide-react';
+import { toast } from 'sonner';
+import { Toaster } from './components/ui/Toaster';
 import { getQuickSummary, getDeepAnalysis, generateStrategicQuestion } from './services/geminiStatic';
 import { TranscriptView } from './components/TranscriptView';
 import { CoachView } from './components/CoachView';
@@ -70,8 +72,9 @@ export default function App() {
       const recentText = transcript.slice(-10).map(t => t.text).join('\n');
       const question = await generateStrategicQuestion(recentText);
       addSuggestion(question, 'manual');
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      toast.error('Failed to generate question', { description: e.message });
     } finally {
       setIsGeneratingQuestion(false);
     }
@@ -84,8 +87,9 @@ export default function App() {
       const fullText = transcript.map(t => t.text).join('\n');
       const result = await getQuickSummary(fullText);
       setQuickAnalysis(result);
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      toast.error('Failed to generate summary', { description: e.message });
     } finally {
       setIsSummarizing(false);
     }
@@ -98,8 +102,9 @@ export default function App() {
       const fullText = transcript.map(t => t.text).join('\n');
       const result = await getDeepAnalysis(fullText);
       setDeepAnalysis(result);
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      toast.error('Failed to generate deep analysis', { description: e.message });
     } finally {
       setIsThinking(false);
     }
@@ -107,7 +112,8 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-[100dvh] bg-background text-foreground font-sans overflow-hidden relative transition-colors duration-300">
-
+      <Toaster />
+      {/* Settings Dialog */}
       {/* Settings Dialog */}
       <SettingsDialog
         isOpen={showSettings}
@@ -147,6 +153,7 @@ export default function App() {
           <button
             onClick={() => setShowSettings(true)}
             className="p-2 rounded-full hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="Open Settings"
           >
             <Settings size={20} />
           </button>
@@ -203,6 +210,7 @@ export default function App() {
           <button
             onClick={handleDownload}
             className="flex items-center justify-center gap-2 p-3 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors border border-border rounded-lg bg-card hover:bg-accent"
+            aria-label="Export Conversation Transcript"
           >
             <Download size={16} /> Export Session
           </button>
@@ -275,9 +283,10 @@ export default function App() {
         <button
           onClick={toggleRecording}
           className={`h-14 w-14 md:h-16 md:w-16 rounded-full flex items-center justify-center shadow-xl shadow-primary/20 transition-all duration-300 ${isConnected
-              ? 'bg-destructive text-destructive-foreground animate-pulse ring-4 ring-destructive/20'
-              : 'bg-primary text-primary-foreground hover:scale-105 active:scale-95 hover:shadow-primary/30'
+            ? 'bg-destructive text-destructive-foreground animate-pulse ring-4 ring-destructive/20'
+            : 'bg-primary text-primary-foreground hover:scale-105 active:scale-95 hover:shadow-primary/30'
             }`}
+          aria-label={isConnected ? "Stop Recording" : "Start Recording"}
         >
           {isConnected ? <MicOff size={24} /> : <Mic size={24} />}
         </button>
