@@ -1,155 +1,101 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-
-// Use vi.hoisted to ensure the mock is created before the module is imported
-const mocks = vi.hoisted(() => {
-    return {
-        generateContent: vi.fn(),
-    };
-});
-
-vi.mock('@google/genai', () => {
-    return {
-        GoogleGenAI: class {
-            models: any;
-            constructor() {
-                this.models = {
-                    generateContent: mocks.generateContent,
-                };
-            }
-        },
-        Type: {
-            OBJECT: 'OBJECT',
-            STRING: 'STRING',
-        },
-    };
-});
-
-// Import after mock
 import * as geminiStatic from './geminiStatic';
+
+const mockFetch = vi.fn();
+global.fetch = mockFetch;
 
 describe('geminiStatic', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mockFetch.mockReset();
     });
 
     describe('getQuickSummary', () => {
         it('should return parsed summary when API call succeeds', async () => {
             const mockResponse = {
-                text: JSON.stringify({
-                    summary: 'A short summary.',
-                    sentiment: 'Positive',
-                    emoji: '😊',
-                }),
+                summary: 'A short summary.',
+                mood: 'Positive'
             };
-            mocks.generateContent.mockResolvedValue(mockResponse);
+
+            mockFetch.mockResolvedValue({
+                ok: true,
+                json: async () => mockResponse
+            });
 
             const result = await geminiStatic.getQuickSummary('transcript text');
 
             expect(result).toEqual({
                 summary: 'A short summary.',
                 sentiment: 'Positive',
-                emoji: '😊',
+                emoji: '😐', // Default
             });
-            expect(mocks.generateContent).toHaveBeenCalledWith(expect.objectContaining({
-                model: 'gemini-flash-lite-latest',
+            expect(mockFetch).toHaveBeenCalledWith('/api/summary', expect.objectContaining({
+                method: 'POST',
+                body: JSON.stringify({ text: 'transcript text' })
             }));
         });
 
-        it('should return fallback on parsing error', async () => {
-            const mockResponse = {
-                text: 'Invalid JSON',
-            };
-            mocks.generateContent.mockResolvedValue(mockResponse);
-
-            const result = await geminiStatic.getQuickSummary('transcript text');
-
-            expect(result).toEqual({
-                summary: 'Could not generate summary.',
-                sentiment: 'Neutral',
-                emoji: '😐',
+        it('should throw error on API failure', async () => {
+            mockFetch.mockResolvedValue({
+                ok: false,
+                status: 500
             });
-        });
 
-        it('should return fallback on API error', async () => {
-            mocks.generateContent.mockRejectedValue(new Error('API Error'));
-
-            const result = await geminiStatic.getQuickSummary('transcript text');
-
-            expect(result).toEqual({
-                summary: 'Could not generate summary.',
-                sentiment: 'Neutral',
-                emoji: '😐',
-            });
+            await expect(geminiStatic.getQuickSummary('transcript text')).rejects.toThrow('Failed to fetch summary');
         });
     });
 
     describe('generateStrategicQuestion', () => {
         it('should return generated question', async () => {
-            const mockResponse = {
-                text: 'What is your goal?',
-            };
-            mocks.generateContent.mockResolvedValue(mockResponse);
+            const mockResponse = { question: 'What is your goal?' };
+            mockFetch.mockResolvedValue({
+                ok: true,
+                json: async () => mockResponse
+            });
 
             const result = await geminiStatic.generateStrategicQuestion('transcript text');
 
             expect(result).toBe('What is your goal?');
-            expect(mocks.generateContent).toHaveBeenCalledWith(expect.objectContaining({
-                model: 'gemini-flash-lite-latest',
-            }));
+            expect(mockFetch).toHaveBeenCalledWith('/api/question', expect.any(Object));
         });
 
-        it('should return fallback on API error', async () => {
-            mocks.generateContent.mockRejectedValue(new Error('API Error'));
+        it('should throw error on API failure', async () => {
+            mockFetch.mockResolvedValue({
+                ok: false,
+                status: 500
+            });
 
-            const result = await geminiStatic.generateStrategicQuestion('transcript text');
-
-            expect(result).toBe('Could not generate question.');
+            await expect(geminiStatic.generateStrategicQuestion('transcript text')).rejects.toThrow('Failed to generate question');
         });
     });
 
     describe('getDeepAnalysis', () => {
         it('should return deep analysis', async () => {
-            const mockResponse = {
-                text: 'Deep analysis content.',
-            };
-            mocks.generateContent.mockResolvedValue(mockResponse);
+            const mockResponse = { strategy: 'Deep analysis content.' };
+            mockFetch.mockResolvedValue({
+                ok: true,
+                json: async () => mockResponse
+            });
 
             const result = await geminiStatic.getDeepAnalysis('transcript text');
 
             expect(result).toBe('Deep analysis content.');
-            expect(mocks.generateContent).toHaveBeenCalledWith(expect.objectContaining({
-                model: 'gemini-3-pro-preview',
-            }));
-        });
-
-        it('should throw error on API failure', async () => {
-            mocks.generateContent.mockRejectedValue(new Error('API Error'));
-
-            await expect(geminiStatic.getDeepAnalysis('transcript text')).rejects.toThrow('API Error');
+            expect(mockFetch).toHaveBeenCalledWith('/api/strategy', expect.any(Object));
         });
     });
 
     describe('refineTranscript', () => {
         it('should return refined transcript', async () => {
-            const mockResponse = {
-                text: 'Refined transcript.',
-            };
-            mocks.generateContent.mockResolvedValue(mockResponse);
+            const mockResponse = { text: 'Refined transcript.' };
+            mockFetch.mockResolvedValue({
+                ok: true,
+                json: async () => mockResponse
+            });
 
             const result = await geminiStatic.refineTranscript('base64audio');
 
             expect(result).toBe('Refined transcript.');
-            expect(mocks.generateContent).toHaveBeenCalledWith(expect.objectContaining({
-                model: 'gemini-2.5-flash',
-            }));
-        });
-
-        it('should return null on API error', async () => {
-            mocks.generateContent.mockRejectedValue(new Error('API Error'));
-
-            const result = await geminiStatic.refineTranscript('base64audio');
-
-            expect(result).toBeNull();
+            expect(mockFetch).toHaveBeenCalledWith('/api/refine', expect.any(Object));
         });
     });
 });
