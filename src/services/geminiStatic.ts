@@ -1,7 +1,7 @@
 
 import { AnalysisResult } from '../types';
 
-const API_BASE = '/api';
+const API_BASE = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : '/api';
 
 export const getQuickSummary = async (text: string): Promise<AnalysisResult> => {
   const response = await fetch(`${API_BASE}/summary`, {
