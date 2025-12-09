@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { CoachSuggestion } from '../types';
+import { CoachSuggestion, ConnectionStatus } from '../types';
 import { Sparkles, Zap, Play, Clock, Volume2 } from 'lucide-react';
 
 interface CoachViewProps {
@@ -8,6 +8,7 @@ interface CoachViewProps {
   onGenerateQuestion: () => void;
   isGenerating: boolean;
   isConnected: boolean;
+  status: ConnectionStatus;
   onPlayAudio: (text: string) => void;
 }
 
@@ -16,6 +17,7 @@ export const CoachView: React.FC<CoachViewProps> = ({
   onGenerateQuestion,
   isGenerating,
   isConnected,
+  status,
   onPlayAudio
 }) => {
   const latestSuggestion = suggestions[suggestions.length - 1];
@@ -24,25 +26,25 @@ export const CoachView: React.FC<CoachViewProps> = ({
   return (
     <div className="flex flex-col h-full space-y-6 max-w-2xl mx-auto">
 
-      {/* Reconnecting Banner */}
-      {isConnected === false && (
+      {/* Reconnecting Banner - Only show on ERROR or RECONNECTING, not initial DISCONNECTED */}
+      {(status === ConnectionStatus.RECONNECTING || status === ConnectionStatus.ERROR) && (
         <div className="w-full bg-amber-500/10 border border-amber-500/20 text-amber-500 px-4 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-2 animate-pulse">
           <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-bounce" />
-          Connection lost. Attempting to reconnect...
+          {status === ConnectionStatus.RECONNECTING ? 'Connection lost. Attempting to reconnect...' : 'Connection error. Please check your network.'}
         </div>
       )}
 
       {/* Hero Card */}
       <div className="w-full">
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-indigo-900/40 to-background border border-indigo-500/20 shadow-2xl min-h-[260px] flex flex-col items-center justify-center p-6 text-center transition-all duration-500">
+        <div className="relative overflow-hidden rounded-3xl bg-card border border-border shadow-xl min-h-[260px] flex flex-col items-center justify-center p-6 text-center transition-all duration-500">
 
-          {/* Decorative elements */}
-          <div className="absolute -top-24 -right-24 w-48 h-48 bg-indigo-500/20 blur-3xl rounded-full pointer-events-none"></div>
-          <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-purple-500/10 blur-3xl rounded-full pointer-events-none"></div>
+          {/* Decorative elements - Subtle and theme aware */}
+          <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 blur-3xl rounded-full pointer-events-none -translate-y-1/2 translate-x-1/2"></div>
+          <div className="absolute bottom-0 left-0 w-64 h-64 bg-secondary/20 blur-3xl rounded-full pointer-events-none translate-y-1/2 -translate-x-1/2"></div>
 
           {latestSuggestion ? (
             <div className="relative z-10 w-full animate-in fade-in slide-in-from-bottom-2 duration-700">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 text-[10px] font-bold uppercase tracking-widest mb-6">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-[10px] font-bold uppercase tracking-widest mb-6">
                 <Sparkles size={12} />
                 {latestSuggestion.type === 'auto' ? 'Smart Insight' : 'Manual Strategy'}
               </div>
@@ -53,18 +55,18 @@ export const CoachView: React.FC<CoachViewProps> = ({
 
               <button
                 onClick={() => onPlayAudio(latestSuggestion.text)}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-foreground text-background font-semibold text-sm hover:opacity-90 active:scale-95 transition-all shadow-lg shadow-indigo-500/10"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-foreground text-background font-semibold text-sm hover:opacity-90 active:scale-95 transition-all shadow-lg"
               >
                 <Play size={16} fill="currentColor" /> Play Audio
               </button>
             </div>
           ) : (
             <div className="text-center text-muted-foreground relative z-10">
-              <div className="w-16 h-16 rounded-full bg-secondary/50 flex items-center justify-center mx-auto mb-4 animate-pulse">
-                <Sparkles className="w-8 h-8 opacity-20" />
+              <div className="w-20 h-20 rounded-full bg-secondary/50 flex items-center justify-center mx-auto mb-6 animate-pulse ring-4 ring-secondary/20">
+                <Sparkles className="w-10 h-10 opacity-40 text-primary" />
               </div>
-              <p className="text-lg font-medium">Listening for context...</p>
-              <p className="text-sm opacity-60 mt-1">AI insights will appear here automatically.</p>
+              <p className="text-xl font-medium text-foreground">Listening for context...</p>
+              <p className="text-sm text-muted-foreground/80 mt-2 max-w-xs mx-auto">StratChat is analyzing the conversation to provide real-time strategic advice.</p>
             </div>
           )}
         </div>

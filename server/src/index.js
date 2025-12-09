@@ -53,7 +53,7 @@ app.post('/api/summary', async (req, res) => {
 app.post('/api/strategy', async (req, res) => {
     try {
         const { text } = req.body;
-        const model = genAIStatic.getGenerativeModel({ model: 'gemini-2.0-pro-exp-02-05' });
+        const model = genAIStatic.getGenerativeModel({ model: 'gemini-2.0-flash' });
         const prompt = `
       You are a high-level negotiation and communication strategist.
       Analyze the transcript below.

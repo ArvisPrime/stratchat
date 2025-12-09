@@ -11,6 +11,12 @@ import { AnalysisResult } from './types';
 import { useWakeLock } from './hooks/useWakeLock';
 import { useTTS } from './hooks/useTTS';
 import { useGeminiSession } from './hooks/useGeminiSession';
+import { useAuth } from './contexts/AuthContext';
+import { LoginPage } from './components/LoginPage';
+import { SessionsDialog } from './components/SessionsDialog';
+import { SubscriptionModal } from './components/SubscriptionModal';
+import { checkUsageLimit, incrementUsage } from './services/subscriptionService';
+import { Clock } from 'lucide-react';
 
 type Tab = 'strategy' | 'transcript' | 'analysis';
 type Theme = 'light' | 'dark';
@@ -21,6 +27,8 @@ export default function App() {
   // Theme & Settings State
   const [theme, setTheme] = useState<Theme>('dark');
   const [showSettings, setShowSettings] = useState(false);
+  const [showSessionHistory, setShowSessionHistory] = useState(false);
+  const [showSubscription, setShowSubscription] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState<boolean>(false);
 
   // Analysis State
@@ -41,6 +49,7 @@ export default function App() {
     suggestions,
     addSuggestion,
     toggleRecording,
+    loadSession,
     isConnected,
     useSystemAudio,
     setUseSystemAudio
@@ -97,13 +106,27 @@ export default function App() {
     }
   };
 
+  // Auth Check
+  const { user, profile } = useAuth();
+
   const handleDeepAnalysis = async () => {
-    if (transcript.length === 0) return;
+    if (transcript.length === 0 || !user || !profile) return;
+
+    // Feature Gating
+    const allowed = await checkUsageLimit(user.uid, profile, 'deep_strategy');
+    if (!allowed) {
+      setShowSubscription(true);
+      return;
+    }
+
     setIsThinking(true);
     try {
       const fullText = transcript.map(t => t.text).join('\n');
       const result = await getDeepAnalysis(fullText);
       setDeepAnalysis(result);
+
+      // Increment Usage
+      await incrementUsage(user.uid, 'deep_strategy');
     } catch (e: any) {
       console.error(e);
       toast.error('Failed to generate deep analysis', { description: e.message });
@@ -112,10 +135,15 @@ export default function App() {
     }
   };
 
+
+  if (!user) {
+    return <LoginPage />;
+  }
+
   return (
     <div className="flex flex-col h-[100dvh] bg-background text-foreground font-sans overflow-hidden relative transition-colors duration-300">
       <Toaster />
-      {/* Settings Dialog */}
+
       {/* Settings Dialog */}
       <SettingsDialog
         isOpen={showSettings}
@@ -126,6 +154,23 @@ export default function App() {
         setTtsEnabled={setTtsEnabled}
       />
 
+      {/* Sessions History Dialog */}
+      <SessionsDialog
+        isOpen={showSessionHistory}
+        onClose={() => setShowSessionHistory(false)}
+        onSelectSession={(session) => {
+          loadSession(session);
+          setShowSessionHistory(false);
+          toast.info(`Loaded session from ${session.startTime.toLocaleDateString()}`);
+        }}
+      />
+
+      {/* Subscription Modal */}
+      <SubscriptionModal
+        isOpen={showSubscription}
+        onClose={() => setShowSubscription(false)}
+      />
+
       {/* Top Header */}
       <header className="flex-none h-14 flex items-center justify-between px-4 border-b border-border bg-background/80 backdrop-blur-md z-50">
         <div className="flex items-center gap-2">
@@ -133,6 +178,9 @@ export default function App() {
             <Brain className="w-5 h-5 text-primary-foreground" />
           </div>
           <span className="font-semibold text-lg tracking-tight">StratChat</span>
+          {profile?.subscriptionTier === 'pro' && (
+            <span className="text-[10px] font-bold bg-primary/10 text-primary px-2 py-0.5 rounded-full border border-primary/20 uppercase tracking-widest">PRO</span>
+          )}
         </div>
 
         {/* Desktop Tab Switcher */}
@@ -152,6 +200,13 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowSessionHistory(true)}
+            className="p-2 rounded-full hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="View History"
+          >
+            <Clock size={20} />
+          </button>
           <button
             onClick={() => setShowSettings(true)}
             className="p-2 rounded-full hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
@@ -187,13 +242,17 @@ export default function App() {
               <button
                 onClick={handleDeepAnalysis}
                 disabled={transcript.length === 0 || isThinking}
-                className="w-full flex items-center gap-3 p-3 rounded-lg bg-secondary/50 hover:bg-secondary border border-transparent hover:border-border transition-all disabled:opacity-50 text-left group"
+                className="w-full flex items-center gap-3 p-3 rounded-lg bg-secondary/50 hover:bg-secondary border border-transparent hover:border-border transition-all disabled:opacity-50 text-left group relative"
               >
+                {/* Lock Icon for Limit reached - Visual cue could be added here later */}
                 <div className="p-2 rounded-md bg-purple-500/10 text-purple-500 group-hover:bg-purple-500/20 transition-colors">
                   <Brain className="w-4 h-4" />
                 </div>
                 <div>
-                  <div className="text-sm font-medium">Deep Strategy</div>
+                  <div className="flex items-center gap-2">
+                    <div className="text-sm font-medium">Deep Strategy</div>
+                    {profile?.subscriptionTier !== 'pro' && <div className="text-[9px] bg-muted px-1.5 rounded-sm border opacity-70">LIMIT 3</div>}
+                  </div>
                   <div className="text-[10px] text-muted-foreground">Gemini 3 Pro</div>
                 </div>
               </button>
@@ -264,6 +323,7 @@ export default function App() {
                 onGenerateQuestion={handleGenerateQuestion}
                 isGenerating={isGeneratingQuestion}
                 isConnected={isConnected}
+                status={status}
                 onPlayAudio={speakText}
               />
             </div>
@@ -287,8 +347,8 @@ export default function App() {
           <button
             onClick={() => setUseSystemAudio(!useSystemAudio)}
             className={`px-3 py-1.5 rounded-full text-xs font-medium backdrop-blur-md transition-all shadow-lg border ${useSystemAudio
-                ? 'bg-blue-500/80 text-white border-blue-400'
-                : 'bg-background/80 text-muted-foreground border-border hover:bg-background'
+              ? 'bg-blue-500/80 text-white border-blue-400'
+              : 'bg-background/80 text-muted-foreground border-border hover:bg-background'
               }`}
           >
             {useSystemAudio ? 'Meeting Audio On' : 'Include Meeting Audio'}

@@ -31,3 +31,34 @@ export enum ConnectionStatus {
   RECONNECTING = 'reconnecting', // New status
   ERROR = 'error'
 }
+
+// SaaS Data Models
+
+export interface UserProfile {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  photoURL: string | null;
+  createdAt: Date;
+
+  // Custom StratChat Fields
+  jobTitle?: string;
+  industry?: string;
+  focusArea?: string; // e.g. "Negotiation", "Leadership", "Sales"
+
+  // Subscription
+  subscriptionStatus: 'active' | 'past_due' | 'canceled' | 'free';
+  subscriptionTier: 'free' | 'pro' | 'enterprise';
+  stripeCustomerId?: string;
+}
+
+export interface SessionData {
+  id: string;
+  userId: string;
+  startTime: Date;
+  endTime?: Date;
+  summary?: string;
+  mood?: string;
+  transcript: TranscriptEntry[];
+  suggestions: CoachSuggestion[];
+}
