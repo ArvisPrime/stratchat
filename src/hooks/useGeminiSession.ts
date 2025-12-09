@@ -13,6 +13,7 @@ export function useGeminiSession({ ttsEnabled, speakText }: UseGeminiSessionProp
     const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
     const [suggestions, setSuggestions] = useState<CoachSuggestion[]>([]);
 
+    const [useSystemAudio, setUseSystemAudio] = useState(false);
     const liveServiceRef = useRef<GeminiLiveService | null>(null);
 
     const addSuggestion = useCallback((text: string, type: 'auto' | 'manual') => {
@@ -83,11 +84,11 @@ export function useGeminiSession({ ttsEnabled, speakText }: UseGeminiSessionProp
 
     const toggleRecording = useCallback(() => {
         if (status === ConnectionStatus.DISCONNECTED || status === ConnectionStatus.ERROR) {
-            liveServiceRef.current?.connect();
+            liveServiceRef.current?.connect({ includeSystemAudio: useSystemAudio });
         } else if (status === ConnectionStatus.CONNECTED) {
             liveServiceRef.current?.disconnect();
         }
-    }, [status]);
+    }, [status, useSystemAudio]);
 
     return {
         status,
@@ -95,6 +96,8 @@ export function useGeminiSession({ ttsEnabled, speakText }: UseGeminiSessionProp
         suggestions,
         addSuggestion,
         toggleRecording,
-        isConnected: status === ConnectionStatus.CONNECTED
+        isConnected: status === ConnectionStatus.CONNECTED,
+        useSystemAudio,
+        setUseSystemAudio
     };
 }

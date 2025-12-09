@@ -41,7 +41,9 @@ export default function App() {
     suggestions,
     addSuggestion,
     toggleRecording,
-    isConnected
+    isConnected,
+    useSystemAudio,
+    setUseSystemAudio
   } = useGeminiSession({ ttsEnabled, speakText });
 
   // Theme Effect
@@ -279,7 +281,21 @@ export default function App() {
       </main>
 
       {/* Floating Action Button (Recording) */}
-      <div className="absolute bottom-20 md:bottom-8 right-6 z-40">
+      <div className="absolute bottom-20 md:bottom-8 right-6 z-40 flex flex-col items-center gap-3">
+        {/* System Audio Toggle */}
+        {!isConnected && (
+          <button
+            onClick={() => setUseSystemAudio(!useSystemAudio)}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium backdrop-blur-md transition-all shadow-lg border ${useSystemAudio
+                ? 'bg-blue-500/80 text-white border-blue-400'
+                : 'bg-background/80 text-muted-foreground border-border hover:bg-background'
+              }`}
+          >
+            {useSystemAudio ? 'Meeting Audio On' : 'Include Meeting Audio'}
+          </button>
+        )}
+
+
         <button
           onClick={toggleRecording}
           className={`h-14 w-14 md:h-16 md:w-16 rounded-full flex items-center justify-center shadow-xl shadow-primary/20 transition-all duration-300 ${isConnected
