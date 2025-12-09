@@ -10,7 +10,7 @@ import http from 'http';
 dotenv.config({ path: '../.env.local' });
 
 const app = express();
-const port = 3001;
+const port = process.env.PORT || 3001;
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -126,119 +126,109 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 
 wss.on('connection', async (ws) => {
     console.log('Client connected to WebSocket');
-
     let geminiSession = null;
 
-    try {
-        geminiSession = await genAI.live.connect({
-            model: MODEL_NAME_LIVE,
-            config: {
-                // VERIFIED CONFIGURATION (From simple-server.js diagnostics)
-                responseModalities: [Modality.AUDIO], // Native model supports AUDIO only output for now
-                inputAudioTranscription: {}, // Explicitly enable user transcription with empty object
-                systemInstruction: {
-                    parts: [{ text: "You are a silent listener. You are listening to a conversation to provide a transcript. DO NOT RESPOND. DO NOT SPEAK. Remain completely silent." }]
-                },
-            },
-            callbacks: {
-                onopen: () => {
-                    console.log('Gemini Live session opened');
-                },
-                onmessage: (newContent) => {
-                    // Forward Gemini events to Client, BUT FILTER OUT AI AUDIO
-                    if (ws.readyState === WebSocket.OPEN) {
-                        try {
-                            // Check if this is an AI Turn (Audio/Text response)
-                            if (newContent.serverContent?.modelTurn) {
-                                // MUTE THE AI: Do not forward modelTurn to client.
-                                // We only want 'inputTranscription' (User's speech text) 
-                                // and 'turnComplete' (End of turn signals).
-                                // console.log('🤫 Muted AI response');
-                                return;
-                            }
-
-                            // Forward everything else (like inputTranscription)
-                            ws.send(JSON.stringify(newContent));
-                        } catch (e) {
-                            console.error('Error forwarding message:', e);
-                        }
-                    }
-                },
-                onclose: (event) => {
-                    console.log('Gemini Live session closed', event);
-                    // CRITICAL: Close the client connection so it knows to reconnect
-                    ws.close(1011, "Gemini Backend Closed");
-                },
-                onerror: (err) => {
-                    console.error('Gemini Live session error:', err);
-                }
-            }
-        });
-
-        console.log('Connected to Gemini Live');
-    } catch (error) {
-        console.error('Gemini connection error:', error);
-        ws.close(1011, 'Failed to connect to AI');
-        return;
-    }
-
     ws.on('message', async (data) => {
-        console.log(`Received message from client. Type: ${typeof data}, IsBuffer: ${Buffer.isBuffer(data)}, Size: ${data.length}`);
-        if (geminiSession) {
+        // console.log(`Received message from client. Type: ${typeof data}, Size: ${data.length}`);
+
+        // --- 1. Handshake / Configuration Phase ---
+        if (!geminiSession) {
             try {
-                // Attempt to parse as JSON first (Protocol: { audio: "base64" })
                 const strData = data.toString();
-                let isJson = false;
-                try {
-                    const parsed = JSON.parse(strData);
-                    if (parsed.audio) {
-                        // VERIFIED FIX: Wrap in `media` object
-                        await geminiSession.sendRealtimeInput({
-                            media: {
-                                mimeType: 'audio/pcm;rate=16000',
-                                data: parsed.audio
+                const parsed = JSON.parse(strData);
+
+                if (parsed.type === 'config' && parsed.systemInstruction) {
+                    console.log('Received config. Connecting to Gemini with custom instructions...');
+                    try {
+                        geminiSession = await genAI.live.connect({
+                            model: MODEL_NAME_LIVE,
+                            config: {
+                                responseModalities: [Modality.AUDIO],
+                                inputAudioTranscription: {},
+                                systemInstruction: {
+                                    parts: [{ text: parsed.systemInstruction }]
+                                },
+                            },
+                            callbacks: {
+                                onopen: () => {
+                                    console.log('Gemini Live session opened');
+                                    ws.send(JSON.stringify({ type: 'server_ready' }));
+                                },
+                                onmessage: (newContent) => {
+                                    if (ws.readyState === WebSocket.OPEN) {
+                                        if (newContent.serverContent?.modelTurn) {
+                                            return; // Mute AI audio for now (Analyst Mode)
+                                        }
+                                        ws.send(JSON.stringify(newContent));
+                                    }
+                                },
+                                onclose: (event) => {
+                                    console.log(`Gemini Live session closed: ${event.code} - ${event.reason}`);
+                                    ws.close(1011, "Gemini Backend Closed");
+                                },
+                                onerror: (err) => {
+                                    console.error('Gemini Live session error:', err.message || err);
+                                }
                             }
                         });
-                        isJson = true;
-                        process.stdout.write('.'); // Heartbeat
-                        // console.log('Sent audio chunk (JSON) to Gemini');
-                    } else if (parsed.text) {
-                        await geminiSession.send({
-                            parts: [{ text: parsed.text }]
-                        });
-                        isJson = true;
-                        console.log('Sent text message to Gemini:', parsed.text);
+                        console.log('Connected to Gemini Live');
+                    } catch (error) {
+                        console.error('Gemini connection error:', error);
+                        ws.close(1011, 'Failed to connect to AI');
                     }
-                } catch (e) {
-                    // Not valid JSON, proceed to binary handling
+                } else {
+                    console.log('Ignored message before config:', strData.substring(0, 50));
                 }
+            } catch (e) {
+                // Ignore binary or malformed JSON during handshake
+            }
+            return;
+        }
 
-                if (!isJson && Buffer.isBuffer(data)) {
-                    // Fallback to raw binary (Protocol: Float32/Int16 raw bytes)
-                    // Convert Buffer to base64
-                    const b64 = data.toString('base64');
-                    // VERIFIED FIX: Wrap in `media` object
+        // --- 2. Active Session Phase ---
+        // Forward audio/text to Gemini
+        try {
+            // Attempt to parse as JSON first (Protocol: { audio: "base64" })
+            const strData = data.toString();
+            let isJson = false;
+            try {
+                const parsed = JSON.parse(strData); // Re-parsing is fine
+                if (parsed.audio) {
                     await geminiSession.sendRealtimeInput({
                         media: {
                             mimeType: 'audio/pcm;rate=16000',
-                            data: b64
+                            data: parsed.audio
                         }
                     });
-                    console.log('Sent audio chunk (Binary) to Gemini');
+                    isJson = true;
+                    process.stdout.write('.');
+                } else if (parsed.text) {
+                    await geminiSession.send({
+                        parts: [{ text: parsed.text }]
+                    });
+                    isJson = true;
                 }
             } catch (e) {
-                console.error('Error sending to Gemini:', e);
+                // Not JSON
             }
+
+            if (!isJson && Buffer.isBuffer(data)) {
+                const b64 = data.toString('base64');
+                await geminiSession.sendRealtimeInput({
+                    media: {
+                        mimeType: 'audio/pcm;rate=16000',
+                        data: b64
+                    }
+                });
+            }
+        } catch (e) {
+            console.error('Error sending to Gemini:', e);
         }
     });
 
     ws.on('close', () => {
         console.log('Client disconnected');
-        if (geminiSession) {
-            // Check if there is a close method or we just let it drift
-            // The SDK doesn't expose a clean close on the session object easily in docs, 
-            // but looking at source, it handles cleanup.
-        }
+        // No explicit cleanup needed for geminiSession variable, GC handles it.
     });
 });
 

@@ -31,7 +31,7 @@ export class GeminiLiveService {
     this.callbacks = callbacks;
   }
 
-  async connect(options: { includeSystemAudio?: boolean } = {}) {
+  async connect(options: { includeSystemAudio?: boolean, instruction?: string } = {}) {
     try {
       this.callbacks.onStatusChange(ConnectionStatus.CONNECTING);
 
@@ -74,8 +74,6 @@ export class GeminiLiveService {
 
             // Listen for user stopping the share via browser UI
             audioTrack.onended = () => {
-              // If user stops sharing, we could handle it here, 
-              // but for now we just let the mix continue without that track.
               console.log("System audio track ended");
             };
           } else {
@@ -89,10 +87,6 @@ export class GeminiLiveService {
       }
 
       // 4. Mix Sources
-      // Create a merger to mix sources if we have multiple, or just pass through
-      // Actually, we can just connect all sources to the processor. 
-      // The Web Audio API sums inputs automatically when multiple nodes connect to one.
-
       this.processor = this.inputAudioContext.createScriptProcessor(4096, 1, 1);
 
       sources.forEach(source => {
@@ -108,15 +102,30 @@ export class GeminiLiveService {
 
       // Connect to Backend WebSocket
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/ws`; // Proxy will handle this
+
+      // In production (Cloud Run), we might be on a different domain than the backend
+      // But for now, let's assume valid proxy or direct URL via ENV
+      const prodWsUrl = import.meta.env.VITE_WS_URL;
+      const wsUrl = prodWsUrl || `${protocol}//${window.location.host}/ws`;
 
       this.socket = new WebSocket(wsUrl);
 
       this.socket.onopen = () => {
+        console.log('WebSocket connected. Sending config...');
+        // Config Handshake
+        this.socket?.send(JSON.stringify({
+          type: 'config',
+          systemInstruction: options.instruction || "You are a helpful AI."
+        }));
         this.handleOpen();
       };
 
       this.socket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'server_ready') {
+          console.log('Server ready for audio');
+          return;
+        }
         this.handleMessage(event);
       };
 

@@ -21,7 +21,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
   ttsEnabled,
   setTtsEnabled,
 }) => {
-  const { profile, refreshProfile } = useAuth();
+  const { profile, refreshProfile, deleteAccount, signOut } = useAuth();
   const [activeTab, setActiveTab] = useState<'general' | 'profile'>('general');
   const [formData, setFormData] = useState({
     displayName: '',
@@ -99,8 +99,8 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                   <button
                     onClick={() => setTheme('light')}
                     className={`flex items-center justify-center gap-2 p-3 rounded-xl border transition-all ${theme === 'light'
-                        ? 'bg-primary/5 border-primary text-primary'
-                        : 'bg-card border-border hover:bg-muted'
+                      ? 'bg-primary/5 border-primary text-primary'
+                      : 'bg-card border-border hover:bg-muted'
                       }`}
                   >
                     <Sun size={18} />
@@ -109,8 +109,8 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                   <button
                     onClick={() => setTheme('dark')}
                     className={`flex items-center justify-center gap-2 p-3 rounded-xl border transition-all ${theme === 'dark'
-                        ? 'bg-primary/5 border-primary text-primary'
-                        : 'bg-card border-border hover:bg-muted'
+                      ? 'bg-primary/5 border-primary text-primary'
+                      : 'bg-card border-border hover:bg-muted'
                       }`}
                   >
                     <Moon size={18} />
@@ -208,7 +208,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                 </div>
               </div>
 
-              <div className="pt-2">
+              <div className="pt-2 space-y-3">
                 <button
                   onClick={handleSaveProfile}
                   disabled={isSaving}
@@ -216,6 +216,36 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                 >
                   {isSaving ? <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <Save size={18} />}
                   Save Profile
+                </button>
+
+                <button
+                  onClick={() => {
+                    signOut();
+                    onClose();
+                  }}
+                  className="w-full flex items-center justify-center gap-2 p-3 rounded-xl bg-secondary hover:bg-secondary/80 text-foreground font-medium transition-colors"
+                >
+                  Sign Out
+                </button>
+              </div>
+
+              <div className="pt-6 mt-6 border-t border-border">
+                <h3 className="text-xs font-bold text-red-500 uppercase tracking-wider mb-3">Danger Zone</h3>
+                <button
+                  onClick={async () => {
+                    if (window.confirm("Are you sure? This will permanently delete your account and all data. This action cannot be undone.")) {
+                      try {
+                        await deleteAccount();
+                        onClose();
+                        toast.success("Account deleted.");
+                      } catch (e: any) {
+                        toast.error("Failed to delete account", { description: e.message });
+                      }
+                    }
+                  }}
+                  className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 hover:text-red-700 transition-colors"
+                >
+                  Delete Account
                 </button>
               </div>
 

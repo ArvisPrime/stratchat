@@ -9,9 +9,10 @@ import { toast } from 'sonner';
 interface UseGeminiSessionProps {
     ttsEnabled: boolean;
     speakText: (text: string) => void;
+    meetingTypeInstruction?: string;
 }
 
-export function useGeminiSession({ ttsEnabled, speakText }: UseGeminiSessionProps) {
+export function useGeminiSession({ ttsEnabled, speakText, meetingTypeInstruction }: UseGeminiSessionProps) {
     const { user } = useAuth();
     const [status, setStatus] = useState<ConnectionStatus>(ConnectionStatus.DISCONNECTED);
     const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
@@ -107,19 +108,37 @@ export function useGeminiSession({ ttsEnabled, speakText }: UseGeminiSessionProp
         };
     }, [addSuggestion]);
 
+    const connect = useCallback(async () => {
+        try {
+            setStatus(ConnectionStatus.CONNECTING);
+            // Use passed instruction or default
+            const defaultInstruction = "You are a silent listener. You are listening to a conversation to provide a transcript. DO NOT RESPOND. DO NOT SPEAK. Remain completely silent.";
+            const finalInstruction = meetingTypeInstruction || defaultInstruction;
+
+            await liveServiceRef.current?.connect({ instruction: finalInstruction, includeSystemAudio: useSystemAudio });
+
+            setStatus(ConnectionStatus.CONNECTED);
+            setStartTime(new Date());
+            setTranscript([]);
+            setSuggestions([]);
+
+        } catch (e) {
+            console.error(e);
+            setStatus(ConnectionStatus.DISCONNECTED);
+            toast.error("Failed to connect to AI Coach");
+        }
+    }, [useSystemAudio, meetingTypeInstruction]); // Added useSystemAudio to dependencies
+
     const toggleRecording = useCallback(async () => {
         if (status === ConnectionStatus.DISCONNECTED || status === ConnectionStatus.ERROR) {
             // Start
-            setTranscript([]);
-            setSuggestions([]);
-            setStartTime(new Date());
-            liveServiceRef.current?.connect({ includeSystemAudio: useSystemAudio });
+            await connect(); // Call the new connect function
         } else if (status === ConnectionStatus.CONNECTED) {
             // Stop
             liveServiceRef.current?.disconnect();
             await handleSaveSession();
         }
-    }, [status, useSystemAudio, handleSaveSession]);
+    }, [status, connect, handleSaveSession]);
 
     const loadSession = useCallback((session: any) => { // Using any tmp to avoid Import cycle, but ideally SessionData
         if (status === ConnectionStatus.CONNECTED) {

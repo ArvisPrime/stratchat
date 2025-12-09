@@ -16,7 +16,9 @@ import { LoginPage } from './components/LoginPage';
 import { SessionsDialog } from './components/SessionsDialog';
 import { SubscriptionModal } from './components/SubscriptionModal';
 import { checkUsageLimit, incrementUsage } from './services/subscriptionService';
-import { Clock } from 'lucide-react';
+import { MeetingTypeDashboard } from './components/MeetingTypeDashboard';
+import { MeetingType, DEFAULT_MEETING_TYPE, getMeetingTypes } from './services/meetingTypeService';
+import { Clock, ChevronDown } from 'lucide-react';
 
 type Tab = 'strategy' | 'transcript' | 'analysis';
 type Theme = 'light' | 'dark';
@@ -24,12 +26,19 @@ type Theme = 'light' | 'dark';
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('strategy');
 
+  // Auth Check
+  const { user, profile } = useAuth();
+
   // Theme & Settings State
   const [theme, setTheme] = useState<Theme>('dark');
   const [showSettings, setShowSettings] = useState(false);
   const [showSessionHistory, setShowSessionHistory] = useState(false);
   const [showSubscription, setShowSubscription] = useState(false);
+  const [showMeetingTypes, setShowMeetingTypes] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState<boolean>(false);
+
+  // Meeting Type State
+  const [activeMeetingType, setActiveMeetingType] = useState<MeetingType>(DEFAULT_MEETING_TYPE);
 
   // Analysis State
   const [quickAnalysis, setQuickAnalysis] = useState<AnalysisResult | null>(null);
@@ -53,7 +62,20 @@ export default function App() {
     isConnected,
     useSystemAudio,
     setUseSystemAudio
-  } = useGeminiSession({ ttsEnabled, speakText });
+  } = useGeminiSession({
+    ttsEnabled,
+    speakText,
+    meetingTypeInstruction: activeMeetingType.systemInstruction
+  });
+
+  // Load Initial Meeting Type
+  useEffect(() => {
+    if (user) {
+      getMeetingTypes(user.uid).then(types => {
+        if (types.length > 0) setActiveMeetingType(types[0]);
+      });
+    }
+  }, [user]);
 
   // Theme Effect
   useEffect(() => {
@@ -106,8 +128,7 @@ export default function App() {
     }
   };
 
-  // Auth Check
-  const { user, profile } = useAuth();
+
 
   const handleDeepAnalysis = async () => {
     if (transcript.length === 0 || !user || !profile) return;
@@ -201,6 +222,15 @@ export default function App() {
 
         <div className="flex items-center gap-2">
           <button
+            onClick={() => setShowMeetingTypes(true)}
+            className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/50 border border-border hover:bg-secondary transition-colors text-xs font-medium"
+          >
+            <Brain size={14} className="text-primary" />
+            {activeMeetingType.name}
+            <ChevronDown size={12} className="text-muted-foreground" />
+          </button>
+
+          <button
             onClick={() => setShowSessionHistory(true)}
             className="p-2 rounded-full hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
             aria-label="View History"
@@ -216,6 +246,13 @@ export default function App() {
           </button>
         </div>
       </header>
+
+      <MeetingTypeDashboard
+        isOpen={showMeetingTypes}
+        onClose={() => setShowMeetingTypes(false)}
+        onSelectType={setActiveMeetingType}
+        currentTypeId={activeMeetingType.id}
+      />
 
       {/* Main Content Area */}
       <main className="flex-1 overflow-hidden relative w-full max-w-6xl mx-auto flex flex-col md:flex-row">
