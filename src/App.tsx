@@ -19,6 +19,8 @@ import { checkUsageLimit, incrementUsage } from './services/subscriptionService'
 import { MeetingTypeDashboard } from './components/MeetingTypeDashboard';
 import { MeetingType, DEFAULT_MEETING_TYPE, getMeetingTypes } from './services/meetingTypeService';
 import { Clock, ChevronDown } from 'lucide-react';
+import { UserMenu } from './components/UserMenu';
+import { ProfileDashboard } from './components/ProfileDashboard';
 
 type Tab = 'strategy' | 'transcript' | 'analysis';
 type Theme = 'light' | 'dark';
@@ -35,6 +37,7 @@ export default function App() {
   const [showSessionHistory, setShowSessionHistory] = useState(false);
   const [showSubscription, setShowSubscription] = useState(false);
   const [showMeetingTypes, setShowMeetingTypes] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState<boolean>(false);
 
   // Meeting Type State
@@ -237,15 +240,22 @@ export default function App() {
           >
             <Clock size={20} />
           </button>
-          <button
-            onClick={() => setShowSettings(true)}
-            className="p-2 rounded-full hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
-            aria-label="Open Settings"
-          >
-            <Settings size={20} />
-          </button>
+
+          <UserMenu
+            user={user}
+            profile={profile}
+            onOpenProfile={() => setShowProfile(true)}
+            onOpenSubscription={() => setShowSubscription(true)}
+            theme={theme}
+            setTheme={setTheme}
+          />
         </div>
       </header>
+
+      <ProfileDashboard
+        isOpen={showProfile}
+        onClose={() => setShowProfile(false)}
+      />
 
       <MeetingTypeDashboard
         isOpen={showMeetingTypes}
